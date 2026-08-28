@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DocSummary, ExtractionResult } from './types'
+import { api } from './api'
 
 /* The desktop and mobile layouts are not two skins of one tree - one has a
    sidebar of tabs, the other a floating nav and a single column. Trying to do
@@ -64,7 +65,7 @@ export function useDocCache() {
     setError(null)
     setLoading(id)
     try {
-      const res = await fetch(`/api/documents/${id}`)
+      const res = await fetch(api(`/api/documents/${id}`))
       if (!res.ok) {
         throw new Error(res.status === 404
           ? 'Not found - it may have just been deleted.'
@@ -110,7 +111,7 @@ export function useHistory() {
 
   const load = useCallback(() => {
     setError(null)
-    fetch(`/api/documents?limit=${HISTORY_LIMIT}`)
+    fetch(api(`/api/documents?limit=${HISTORY_LIMIT}`))
       .then(r => r.json())
       .then(setDocs)
       .catch(() => setError('Could not reach the server.'))

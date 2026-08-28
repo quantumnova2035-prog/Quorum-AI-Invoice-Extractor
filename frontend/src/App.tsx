@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BatchItem, DeskDoc, DocSummary, ExtractionResult, FieldResult, Health } from './types'
 import { Detail, reviewCount } from './ReviewUI'
 import { useDocCache, useHistory, useIsMobile } from './hooks'
+import { api } from './api'
 import DocStack from './components/DocStack'
 import Home from './components/Home'
 import MobileNav, { type View } from './components/MobileNav'
@@ -52,7 +53,7 @@ export default function App() {
   const [docOpen, setDocOpen] = useState(false)
 
   useEffect(() => {
-    fetch('/api/health').then(r => r.json()).then(setHealth).catch(() => setHealth(null))
+    fetch(api('/api/health')).then(r => r.json()).then(setHealth).catch(() => setHealth(null))
   }, [])
 
   const enqueue = useCallback((files: FileList | File[]) => {
@@ -81,7 +82,7 @@ export default function App() {
         try {
           const body = new FormData()
           body.append('file', item.file)
-          const res = await fetch('/api/extract', { method: 'POST', body })
+          const res = await fetch(api('/api/extract'), { method: 'POST', body })
           if (!res.ok) {
             const detail = await res.json().catch(() => null)
             throw new Error(detail?.detail ?? `HTTP ${res.status}`)
@@ -103,7 +104,7 @@ export default function App() {
   const saveCorrection = useCallback(async (docId: string | undefined, f: FieldResult, value: string) => {
     if (!docId) return
     setCorrections(prev => ({ ...prev, [docId]: { ...(prev[docId] ?? {}), [f.name]: value } }))
-    await fetch('/api/corrections', {
+    await fetch(api('/api/corrections'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -176,7 +177,7 @@ export default function App() {
   const doDelete = useCallback(async (id: string) => {
     setDeletingId(id)
     try {
-      const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
+      const res = await fetch(api(`/api/documents/${id}`), { method: 'DELETE' })
       if (!res.ok) {
         const d = await res.json().catch(() => null)
         throw new Error(d?.detail ?? `HTTP ${res.status}`)

@@ -178,6 +178,33 @@ Root Directory is unset on that service. See
 Fix it under **Settings -> Build & Deploy -> Root Directory**, then
 **Manual Deploy -> Deploy latest commit**.
 
+### The `/api/*` rewrite will not save
+
+Render's validator can reject a wildcard destination pointing at an external
+URL ("No wildcard in source", even though the source has one). If retyping the
+source does not clear it, skip the rewrite entirely and point the frontend
+straight at the API:
+
+1. On the **static site**, add a build-time environment variable:
+
+   | Key | Value |
+   |---|---|
+   | `VITE_API_BASE` | `https://<your-api>.onrender.com` |
+
+2. Delete rewrite rule 1. **Keep rule 2** (`/*` -> `/index.html`) - it is the
+   single-page-app fallback and unrelated.
+3. On the **API**, set `CORS_ORIGINS` to the static site's exact origin, e.g.
+   `https://quorum-ai-ui.onrender.com`. No trailing slash.
+4. Redeploy both. `VITE_API_BASE` is read at build time and compiled into the
+   bundle, so the frontend needs a rebuild, not a restart.
+
+The trade-off: the browser now talks to two origins, so every request pays a
+CORS preflight and `CORS_ORIGINS` becomes load-bearing. Get it wrong and every
+call fails while the page itself loads perfectly.
+
+Leaving `VITE_API_BASE` unset keeps the default - relative `/api/...` calls,
+served by the dev proxy locally and by a rewrite in production.
+
 ### `--include=dev` is not optional
 
 Render builds with `NODE_ENV=production`, and npm then skips `devDependencies` —
