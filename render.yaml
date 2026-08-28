@@ -1,0 +1,44 @@
+# Render free-tier deployment. Both services spin down after 15 minutes idle,
+# so the first request after a quiet period takes ~30s to wake.
+services:
+  - type: web
+    name: quorum-ai-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: OPENROUTER_API_KEY
+        sync: false          # set in the Render dashboard, never in git
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://quorum-ai-ui.onrender.com
+
+  - type: web
+    name: quorum-ai-ui
+    runtime: static
+    plan: free
+    rootDir: frontend
+    # --include=dev is not optional. Render builds with NODE_ENV=production, and
+    # a plain `npm ci` then skips devDependencies - which is where vite and
+    # typescript live. The build would fail with "vite: not found".
+    buildCommand: npm ci --include=dev && npm run build
+    staticPublishPath: dist
+    routes:
+      # SPA fallback, plus proxy /api to the backend so the browser sees one origin.
+      - type: rewrite
+        source: /api/*
+        destination: https://quorum-ai-api.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html

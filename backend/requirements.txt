@@ -1,0 +1,11 @@
+fastapi>=0.119
+uvicorn[standard]>=0.38
+pydantic>=2.12
+python-dotenv>=1.1
+python-multipart>=0.0.20
+httpx>=0.28
+pymupdf>=1.26
+pillow>=11.3
+supabase>=2.20
+reportlab>=4.4
+python-dateutil>=2.9
