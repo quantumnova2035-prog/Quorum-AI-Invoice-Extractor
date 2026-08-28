@@ -290,6 +290,19 @@ python scripts/evaluate.py --limit 25 --tune
 
 ---
 
+## Deploying
+
+Two services on Render's free tier — a FastAPI web service and a static site,
+joined by a rewrite so the browser sees one origin. Both are declared in
+[`render.yaml`](render.yaml), so a Blueprint deploy needs no manual
+configuration.
+
+Full runbook, including the settings to enter if you create the services by
+hand and the failure modes worth knowing about in advance:
+**[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+---
+
 ## API
 
 | Method | Route | Purpose |
