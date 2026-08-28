@@ -10,6 +10,42 @@ the Blueprint route you will not type any of it.
 
 ---
 
+## The one setting that breaks everything
+
+This repo holds two projects in one repository:
+
+```
+Quorum-AI-Invoice-Extractor/
+├── backend/     Python API   (requirements.txt lives here)
+├── frontend/    React app    (package.json lives here)
+└── render.yaml
+```
+
+**Render defaults every service to the repository root.** If you create services
+by hand and skip **Root Directory**, the build runs at the top level, where
+neither file exists:
+
+```
+ERROR: Could not open requirements file:
+       [Errno 2] No such file or directory: 'requirements.txt'
+```
+
+The build command is not wrong — Render is standing in the wrong folder.
+
+| Service | Root Directory |
+|---|---|
+| API | `backend` |
+| Frontend | `frontend` |
+
+Everything else — build command, start command, publish path — is relative to
+it. Setting it also fixes the start command, which would fail next for the same
+reason: `app.main` is not importable from the repository root either.
+
+`render.yaml` already declares `rootDir` for both services, so this cannot
+happen on the Blueprint route.
+
+---
+
 ## Before you start
 
 - A GitHub repo with this code pushed (see [First push](#first-push) if you have
@@ -63,7 +99,7 @@ Use this if you would rather not use a blueprint. The values are identical.
 |---|---|
 | Type | **Web Service** |
 | Language | **Python 3** |
-| Root Directory | `backend` |
+| **Root Directory** | **`backend`** — see above; skipping this is the #1 cause of a failed build |
 | Instance Type | Free |
 
 Build command:
@@ -102,7 +138,7 @@ providers and report `supabase: connected`.
 | Field | Value |
 |---|---|
 | Type | **Static Site** |
-| Root Directory | `frontend` |
+| **Root Directory** | **`frontend`** — without it, `npm ci` runs at the repo root and finds no package.json |
 
 Build command:
 
@@ -134,6 +170,13 @@ API requests and rule 1 never fires.
 ---
 
 ## Things that will bite you
+
+### A build that cannot find requirements.txt or package.json
+
+Root Directory is unset on that service. See
+[The one setting that breaks everything](#the-one-setting-that-breaks-everything).
+Fix it under **Settings -> Build & Deploy -> Root Directory**, then
+**Manual Deploy -> Deploy latest commit**.
 
 ### `--include=dev` is not optional
 
