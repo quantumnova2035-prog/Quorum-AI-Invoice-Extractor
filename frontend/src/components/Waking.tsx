@@ -1,47 +1,91 @@
-import { wakeProgress } from '../hooks'
+import { useEffect, useState } from 'react'
+import { WAKE_ESTIMATE_MS } from '../hooks'
 
-/* Shown only while the API is actually unreachable, which on the free tier
-   means the instance has spun down and is booting. It says three things, in
-   this order: something is happening, why it is happening, and how long it has
-   been happening. The last one is what stops someone reloading the page - a
-   reload does not help, it just starts the wait over from a fresh tab. */
+const R = 26
+const CIRC = 2 * Math.PI * R
+
+/* Shown only while the API is unreachable, which on the free tier means the
+   instance has spun down and is booting.
+
+   The ring carries the message and the words stay out of the way. Someone
+   watching a countdown drain does not need a paragraph telling them to wait -
+   they need to see that something is counting. The explanation is one tap away
+   behind the info button for the minority who want to know why, and it hides
+   itself again rather than becoming permanent furniture. */
 export function Waking({ elapsed, failed, onRetry }: {
   elapsed: number
   failed: boolean
   onRetry: () => void
 }) {
-  const secs = Math.floor(elapsed / 1000)
-  const pct = failed ? 100 : wakeProgress(elapsed) * 100
+  const [note, setNote] = useState(false)
+
+  // Auto-hide, so a tap out of curiosity does not leave the card permanently
+  // taller for the rest of the wait.
+  useEffect(() => {
+    if (!note) return
+    const t = setTimeout(() => setNote(false), 8000)
+    return () => clearTimeout(t)
+  }, [note])
+
+  const remaining = Math.max(0, WAKE_ESTIMATE_MS - elapsed)
+  const over = remaining === 0
+
+  if (failed) {
+    return (
+      <div className="wakecard is-failed" role="status" aria-live="polite">
+        <div className="wakecard-main">
+          <div className="wakecard-text">
+            <h2>Could not reach the server</h2>
+            <p className="wakecard-sub">
+              It did not respond after several attempts.
+            </p>
+          </div>
+          <button className="btn" onClick={onRetry}>Try again</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className={`wakecard${failed ? ' is-failed' : ''}`} role="status" aria-live="polite">
-      <div className="wakecard-head">
-        <h2>{failed ? 'Could not reach the server' : 'Waking the server'}</h2>
-        {!failed && <span className="wakecard-secs mono">{secs}s</span>}
+    <div className="wakecard" role="status" aria-live="polite">
+      <div className="wakecard-main">
+        <div className={`wakering${over ? ' is-over' : ''}`}>
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle className="wr-track" cx="32" cy="32" r={R} />
+            <circle
+              className="wr-fill" cx="32" cy="32" r={R}
+              strokeDasharray={CIRC}
+              /* Drains clockwise from full. Past zero this value stops moving
+                 and CSS spins the whole ring instead, so the arc never sits
+                 frozen at empty pretending the wait is over. */
+              strokeDashoffset={CIRC * (1 - remaining / WAKE_ESTIMATE_MS)}
+            />
+          </svg>
+          <span className="wr-num mono">
+            {over ? '…' : Math.ceil(remaining / 1000)}
+          </span>
+        </div>
+
+        <div className="wakecard-text">
+          <h2>{over ? 'Almost there' : 'Waking the server'}</h2>
+          <p className="wakecard-sub">
+            {over ? 'Taking longer than usual. Still trying.' : 'This takes a moment on first visit.'}
+          </p>
+        </div>
+
+        <button
+          className="wakecard-i" onClick={() => setNote(n => !n)}
+          aria-expanded={note} aria-label="Why is this happening?"
+        >
+          i
+        </button>
       </div>
 
-      <p>
-        {failed
-          ? 'The API did not respond after several attempts. It may still be starting, or it may be down.'
-          : 'This demo runs on a free instance that sleeps after 15 minutes of inactivity. Your visit is starting it back up — usually about 30 seconds. Nothing is broken, and reloading will not make it faster.'}
-      </p>
-
-      {!failed && (
-        <div className="wakecard-bar" aria-hidden="true">
-          {/* Approaches full without arriving. It reaches 100% when the server
-              answers, not when a guess says it should have. */}
-          <i style={{ width: `${pct}%` }} />
-        </div>
-      )}
-
-      {!failed && secs >= 45 && (
-        <p className="wakecard-slow">
-          Taking longer than usual. Still trying.
+      {note && (
+        <p className="wakecard-note">
+          Free hosting sleeps after 15 minutes of inactivity. Your visit is starting
+          it back up. Reloading will not make it faster.
         </p>
-      )}
-
-      {failed && (
-        <button className="btn" onClick={onRetry}>Try again</button>
       )}
     </div>
   )

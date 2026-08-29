@@ -141,17 +141,17 @@ export function useHistory() {
    sits blank for twenty-five seconds is indistinguishable from a broken one, so
    the wait has to be visible.
 
-   The readout counts UP from zero rather than down to an estimate. A countdown
-   that hits zero while the server is still booting is worse than no countdown
-   at all - it turns "this is slow" into "this is broken". Elapsed seconds plus a
-   bar that approaches full without ever arriving says the reassuring thing
-   without making a promise the server has to keep. */
+   The countdown is deliberately pessimistic. A measured cold start is ~25s, and
+   the estimate is nearly double that, so the ring almost always empties early -
+   which reads as "faster than promised" rather than "overran". Quoting the real
+   average would put roughly half of all visits past zero, and a timer sitting on
+   zero while the page is still blank is the exact impression this is here to
+   prevent. Overrunning is still handled rather than hidden: past zero the ring
+   goes indeterminate instead of pretending to know anything more. */
 export type WakePhase = 'checking' | 'waking' | 'ready' | 'failed'
 
-/** 0..1, asymptotic - deliberately never reaches 1 until the server answers. */
-export function wakeProgress(ms: number): number {
-  return Math.min(0.96, 1 - Math.exp(-ms / 14_000))
-}
+/** What the countdown promises. Padded ~1.8x over the measured ~25s cold start. */
+export const WAKE_ESTIMATE_MS = 45_000
 
 export function useServerWake() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -175,14 +175,20 @@ export function useServerWake() {
       const ms = Date.now() - started
       setElapsed(ms)
       setPhase(p => (p === 'checking' && ms > 2500 ? 'waking' : p))
-    }, 250)
+    }, 100)
 
     /* Render usually queues the request against the booting instance, which is
        why a cold start reads as one slow response rather than an error. But the
        edge can also hang up first, and retrying is the entire difference between
        "waking" and a dead end - so failures retry rather than give up. */
+    /* A deadline, not an attempt count. Twelve tries at three seconds gave up at
+       ~36s - before the 45s countdown could even reach zero - so a refused
+       connection flipped to "could not reach" while the ring still claimed
+       nine seconds left. Giving up must always come after the promise expires,
+       never before it. */
+    const deadline = started + 90_000
     const run = async () => {
-      for (let i = 0; i < 12; i++) {
+      while (Date.now() < deadline) {
         try {
           const res = await fetch(api('/api/health'))
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
