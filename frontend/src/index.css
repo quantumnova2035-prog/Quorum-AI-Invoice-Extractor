@@ -1060,3 +1060,65 @@ tbody tr:last-child td { border-bottom: 0; }
     --faint:        #5b6c8c;
   }
 }
+
+/* ---------------------------------------------------------- cold start ---- */
+
+/* Waking is progress, not a fault, so it reads in the brand blue rather than
+   the amber used for "something is wrong". */
+.statusbtn.waking {
+  background: rgba(37, 99, 235, .10);
+  border-color: rgba(37, 99, 235, .28);
+  color: var(--brand-600);
+}
+.statusbtn.waking .more { color: var(--brand-600); opacity: .75; margin-left: 2px; }
+.pill .dot.wake {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  animation: wake-pulse 1.6s var(--ease-io) infinite;
+}
+@keyframes wake-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+
+.wakecard {
+  margin: 12px 18px 0;
+  padding: 18px 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  backdrop-filter: blur(var(--blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
+  box-shadow: var(--shadow-sm);
+}
+.wakecard-head { display: flex; align-items: baseline; gap: 10px; }
+.wakecard-head h2 { margin: 0; font: 600 15px/1.3 var(--sans); color: var(--ink); }
+.wakecard-secs {
+  margin-left: auto; flex: none;
+  font-size: 12px; color: var(--brand-600);
+  font-variant-numeric: tabular-nums;
+}
+.wakecard p { margin: 8px 0 0; font-size: 13px; line-height: 1.55; color: var(--ink-2); max-width: 62ch; }
+.wakecard-slow { color: var(--muted) !important; font-size: 12px !important; }
+
+.wakecard-bar {
+  margin-top: 14px; height: 4px; border-radius: 999px;
+  background: rgba(37, 99, 235, .12); overflow: hidden;
+}
+.wakecard-bar i {
+  display: block; height: 100%; border-radius: inherit;
+  background: var(--brand);
+  /* Matches the 250ms tick, so the fill glides between samples instead of
+     stepping four times a second. Linear because a bar that eases between every
+     pair of samples reads as hesitant. */
+  transition: width 250ms linear;
+}
+
+.wakecard.is-failed { border-color: rgba(179, 38, 30, .3); background: var(--red-tint); }
+.wakecard.is-failed h2 { color: var(--red); }
+.wakecard.is-failed .btn { margin-top: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill .dot.wake { animation: none; }
+  .wakecard-bar i { transition: none; }
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DocSummary, ExtractionResult } from './types'
+import type { DocSummary, ExtractionResult, Health } from './types'
 import { api } from './api'
 
 /* The desktop and mobile layouts are not two skins of one tree - one has a
@@ -109,15 +109,103 @@ export function useHistory() {
   const [docs, setDocs] = useState<DocSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(() => {
+  /* Retries before reporting failure. On a cold start the API is unreachable
+     for the first few seconds, and a single attempt would paint "Could not
+     reach the server" over a server that is merely still booting - the one
+     message guaranteed to make someone close the tab. */
+  const load = useCallback(async () => {
     setError(null)
-    fetch(api(`/api/documents?limit=${HISTORY_LIMIT}`))
-      .then(r => r.json())
-      .then(setDocs)
-      .catch(() => setError('Could not reach the server.'))
+    for (let i = 0; i < 10; i++) {
+      try {
+        const res = await fetch(api(`/api/documents?limit=${HISTORY_LIMIT}`))
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        setDocs(await res.json())
+        return
+      } catch {
+        await new Promise(r => setTimeout(r, 3000))
+      }
+    }
+    setError('Could not reach the server.')
   }, [])
 
-  useEffect(load, [load])
+  useEffect(() => { void load() }, [load])
 
   return { docs, setDocs, error, reload: load }
+}
+
+/* ---------------------------------------------------------- cold start ---- */
+
+/* A free Render instance spins down after 15 minutes idle. The next request
+   waits for a container to boot - measured at ~25s against this API, of which
+   ~11s is uvicorn importing the app. None of that is an error, but a page that
+   sits blank for twenty-five seconds is indistinguishable from a broken one, so
+   the wait has to be visible.
+
+   The readout counts UP from zero rather than down to an estimate. A countdown
+   that hits zero while the server is still booting is worse than no countdown
+   at all - it turns "this is slow" into "this is broken". Elapsed seconds plus a
+   bar that approaches full without ever arriving says the reassuring thing
+   without making a promise the server has to keep. */
+export type WakePhase = 'checking' | 'waking' | 'ready' | 'failed'
+
+/** 0..1, asymptotic - deliberately never reaches 1 until the server answers. */
+export function wakeProgress(ms: number): number {
+  return Math.min(0.96, 1 - Math.exp(-ms / 14_000))
+}
+
+export function useServerWake() {
+  const [health, setHealth] = useState<Health | null>(null)
+  const [phase, setPhase] = useState<WakePhase>('checking')
+  const [elapsed, setElapsed] = useState(0)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const started = Date.now()
+    setPhase('checking')
+    setElapsed(0)
+
+    /* One tick drives both the readout and the promotion from "checking" to
+       "waking". A warm server answers in ~250ms, so anything still pending at
+       2.5s is almost certainly a cold start: long enough that the normal case
+       never flashes the banner, short enough to explain the wait before it
+       starts to feel like a fault. */
+    const tick = setInterval(() => {
+      if (cancelled) return
+      const ms = Date.now() - started
+      setElapsed(ms)
+      setPhase(p => (p === 'checking' && ms > 2500 ? 'waking' : p))
+    }, 250)
+
+    /* Render usually queues the request against the booting instance, which is
+       why a cold start reads as one slow response rather than an error. But the
+       edge can also hang up first, and retrying is the entire difference between
+       "waking" and a dead end - so failures retry rather than give up. */
+    const run = async () => {
+      for (let i = 0; i < 12; i++) {
+        try {
+          const res = await fetch(api('/api/health'))
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const json = (await res.json()) as Health
+          if (cancelled) return
+          setHealth(json)
+          setPhase('ready')
+          return
+        } catch {
+          if (cancelled) return
+          await new Promise(r => setTimeout(r, 3000))
+        }
+      }
+      if (!cancelled) setPhase('failed')
+    }
+    void run()
+
+    return () => {
+      cancelled = true
+      clearInterval(tick)
+    }
+  }, [attempt])
+
+  const retry = useCallback(() => setAttempt(a => a + 1), [])
+  return { health, phase, elapsed, retry }
 }

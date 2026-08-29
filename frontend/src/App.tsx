@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BatchItem, DeskDoc, DocSummary, ExtractionResult, FieldResult, Health } from './types'
+import type { BatchItem, DeskDoc, DocSummary, ExtractionResult, FieldResult } from './types'
 import { Detail, reviewCount } from './ReviewUI'
-import { useDocCache, useHistory, useIsMobile } from './hooks'
+import { useDocCache, useHistory, useIsMobile, useServerWake } from './hooks'
 import { api } from './api'
 import DocStack from './components/DocStack'
 import Home from './components/Home'
@@ -11,6 +11,7 @@ import Settings from './components/Settings'
 import UploadView from './components/UploadView'
 import { FieldTools, NoFieldsMatch, filterFields, type FieldFilter } from './components/FieldTools'
 import { IconDoc } from './components/Icons'
+import { Waking } from './components/Waking'
 
 /* Two layouts over one state model.
 
@@ -30,7 +31,7 @@ const uid = () => Math.random().toString(36).slice(2, 10)
 export default function App() {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>('home')
-  const [health, setHealth] = useState<Health | null>(null)
+  const { health, phase: wakePhase, elapsed: wakeMs, retry: retryWake } = useServerWake()
 
   const [batch, setBatch] = useState<BatchItem[]>([])
   const [corrections, setCorrections] = useState<Record<string, Record<string, string>>>({})
@@ -51,10 +52,6 @@ export default function App() {
      again. A document is its own screen, pushed over the nav destination you
      came from, with a back button. */
   const [docOpen, setDocOpen] = useState(false)
-
-  useEffect(() => {
-    fetch(api('/api/health')).then(r => r.json()).then(setHealth).catch(() => setHealth(null))
-  }, [])
 
   const enqueue = useCallback((files: FileList | File[]) => {
     const items: BatchItem[] = Array.from(files).map(file => ({ id: uid(), file, status: 'queued' }))
@@ -211,9 +208,16 @@ export default function App() {
   /* One honest summary of whether the app can actually do its job right now.
      Naming the specific failure matters: "no database" and "no LLM key" need
      completely different fixes. */
+  const waking = wakePhase === 'waking'
+  const wakeFailed = wakePhase === 'failed'
   const healthOk = !!health && health.llm_providers.length > 0 && health.supabase.enabled
   const healthTone = healthOk ? 'ok' : 'bad'
-  const healthText = !health ? 'Checking…'
+  /* "No LLM key" while the server is still booting is a lie that reads as a
+     misconfigured app rather than a sleeping one, so waking is its own state
+     rather than a fallback to the worst case. */
+  const healthText = waking ? 'Waking…'
+    : wakeFailed ? 'Unreachable'
+    : !health ? 'Checking…'
     : !health.llm_providers.length ? 'No LLM key'
     : !health.supabase.enabled ? 'Not saving'
     : 'Ready'
@@ -228,14 +232,24 @@ export default function App() {
         </div>
       </div>
       <span className="spacer" />
-      {health && isMobile && (
+      {(health || waking || wakeFailed) && isMobile && (
         /* Two bare dots told you nothing - a green dot is not a status, it is a
            decoration. One chip that names the state, and taps through to
            Settings where the full provider chain already lives. */
-        <button className={`pill statusbtn ${healthTone}`} onClick={() => goTo('settings')}>
-          <i className={`dot ${healthTone === 'ok' ? 'ok' : 'off'}`} />
+        <button className={`pill statusbtn ${waking ? 'waking' : healthTone}`}
+                onClick={() => goTo('settings')}>
+          <i className={`dot ${waking ? 'wake' : healthTone === 'ok' ? 'ok' : 'off'}`} />
           <span className="t">{healthText}</span>
         </button>
+      )}
+      {(waking || wakeFailed) && !isMobile && (
+        <div className="health">
+          <span className={`pill statusbtn ${waking ? 'waking' : 'bad'}`} style={{ cursor: 'default' }}>
+            <i className={`dot ${waking ? 'wake' : 'off'}`} />
+            <span className="t">{healthText}</span>
+            {waking && <span className="more mono">{Math.floor(wakeMs / 1000)}s</span>}
+          </span>
+        </div>
       )}
       {health && !isMobile && (
         <div className="health">
@@ -258,6 +272,10 @@ export default function App() {
     </header>
   )
 
+  const wakeBanner = (waking || wakeFailed) && (
+    <Waking elapsed={wakeMs} failed={wakeFailed} onRetry={retryWake} />
+  )
+
   const noProvider = health && !health.llm_providers.length && (
     <div className="warn" style={{ margin: '12px 18px 0' }}>
       No LLM provider is configured. Add <code>OPENROUTER_API_KEY</code> to{' '}
@@ -271,6 +289,7 @@ export default function App() {
     return (
       <div className="app">
         {header}
+        {wakeBanner}
         {noProvider}
         <div className="workspace">
           <div className="canvas">
@@ -326,6 +345,7 @@ export default function App() {
   return (
     <div className="app">
       {header}
+      {wakeBanner}
       {noProvider}
 
       <DocStack docs={stack} activeId={activeId} onOpen={openDoc} onFiles={enqueue} />
