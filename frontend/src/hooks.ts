@@ -150,8 +150,14 @@ export function useHistory() {
    goes indeterminate instead of pretending to know anything more. */
 export type WakePhase = 'checking' | 'waking' | 'ready' | 'failed'
 
-/** What the countdown promises. Padded ~1.8x over the measured ~25s cold start. */
-export const WAKE_ESTIMATE_MS = 45_000
+/** What the countdown promises.
+    45s was too optimistic: a wake after 35 minutes idle overran it. A curl
+    against a container that had been down only a few minutes took 25s, so the
+    length of the sleep matters - Render appears to evict rather than suspend
+    once an instance has been down a while, and a cold start from eviction is
+    far slower. The estimate is therefore padded against the eviction case, not
+    the lucky one. */
+export const WAKE_ESTIMATE_MS = 75_000
 
 export function useServerWake() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -185,8 +191,8 @@ export function useServerWake() {
        ~36s - before the 45s countdown could even reach zero - so a refused
        connection flipped to "could not reach" while the ring still claimed
        nine seconds left. Giving up must always come after the promise expires,
-       never before it. */
-    const deadline = started + 90_000
+       never before it - so this tracks WAKE_ESTIMATE_MS with room to spare. */
+    const deadline = started + 180_000
     const run = async () => {
       while (Date.now() < deadline) {
         try {

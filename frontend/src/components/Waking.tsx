@@ -4,6 +4,14 @@ import { WAKE_ESTIMATE_MS } from '../hooks'
 const R = 26
 const CIRC = 2 * Math.PI * R
 
+/* Past a minute a bare "75" reads as a quantity rather than a duration, and the
+   first thing anyone does is stop to work out whether it is seconds. m:ss is
+   read, not calculated. */
+function clock(ms: number): string {
+  const s = Math.ceil(ms / 1000)
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : String(s)
+}
+
 /* Shown only while the API is unreachable, which on the free tier means the
    instance has spun down and is booting.
 
@@ -61,8 +69,8 @@ export function Waking({ elapsed, failed, onRetry }: {
               strokeDashoffset={CIRC * (1 - remaining / WAKE_ESTIMATE_MS)}
             />
           </svg>
-          <span className="wr-num mono">
-            {over ? '…' : Math.ceil(remaining / 1000)}
+          <span className={`wr-num mono${!over && remaining >= 60_000 ? ' is-long' : ''}`}>
+            {over ? '…' : clock(remaining)}
           </span>
         </div>
 

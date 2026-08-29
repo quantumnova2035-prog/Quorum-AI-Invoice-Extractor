@@ -1117,10 +1117,22 @@ tbody tr:last-child td { border-bottom: 0; }
   font: 600 17px/1 var(--mono); color: var(--brand-600);
   font-variant-numeric: tabular-nums;
 }
+/* "1:10" is five glyphs where "45" is two, and at the same size it crowds the
+   stroke. The ring is fixed, so the type gives way. */
+.wr-num.is-long { font-size: 14px; letter-spacing: -.3px; }
 
 /* Past the estimate there is nothing honest left to count, so the ring stops
    claiming to measure and simply shows work in progress. */
-.wakering.is-over .wr-fill { transition: none; animation: wr-spin 1.1s linear infinite; }
+.wakering.is-over .wr-fill {
+  /* The countdown ends with the arc at full offset - which is to say invisible -
+     so spinning it spun nothing and the ring read as an empty circle. The
+     indeterminate state needs its own visible segment. These win over the
+     dasharray/dashoffset React sets, because CSS beats presentation attributes. */
+  stroke-dasharray: 42 122;
+  stroke-dashoffset: 0;
+  transition: none;
+  animation: wr-spin 1.1s linear infinite;
+}
 .wakering.is-over .wr-num { color: var(--muted); }
 @keyframes wr-spin {
   from { transform: rotate(-90deg); }
