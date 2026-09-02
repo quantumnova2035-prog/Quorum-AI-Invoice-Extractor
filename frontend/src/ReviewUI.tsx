@@ -51,8 +51,9 @@ export function TimingPanel({ t, c }: { t: Timing; c?: Cost }) {
 
   return (
     <div className="timing">
-      <button className="linkbtn" onClick={() => setOpen(o => !o)}>
-        {open ? 'hide timing' : 'timing breakdown'}
+      <button className="linkbtn" data-open={open ? '1' : '0'}
+              onClick={() => setOpen(o => !o)}>
+        {open ? 'Hide timing' : 'Timing breakdown'}
       </button>
       {open && (
         <div className="timing-body">

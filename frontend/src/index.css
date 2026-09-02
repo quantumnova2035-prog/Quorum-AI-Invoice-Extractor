@@ -733,7 +733,31 @@ tbody tr:last-child td { border-bottom: 0; }
 
 /* -------------------------------------------------------------- timing ---- */
 
-.timing { margin: 14px 0 4px; }
+/* The panel holds the honest instrumentation - real per-pass latency, retries,
+   token counts - so the content stays. What did not belong was the trigger: a
+   bare blue text link floating under the stat cards, the only thing on the
+   screen that looked like unstyled HTML. It is a glass chip like every other
+   control now. */
+.timing { margin: 4px 0 4px; }
+.timing > .linkbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px;
+  border-radius: var(--r-pill);
+  background: var(--glass-dim);
+  border: 1px solid var(--glass-edge);
+  color: var(--ink-2);
+  font: 500 12px var(--sans);
+}
+.timing > .linkbtn::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--faint); flex: none;
+  transition: background-color var(--t-fast) ease;
+}
+.timing > .linkbtn[data-open="1"] { background: var(--brand-tint); color: var(--brand-600); }
+.timing > .linkbtn[data-open="1"]::before { background: var(--brand); }
+@media (hover: hover) and (pointer: fine) {
+  .timing > .linkbtn:hover { background: var(--glass-strong); color: var(--ink); }
+}
 .timing-body {
   margin-top: 10px;
   padding: 12px 14px;
@@ -971,12 +995,24 @@ tbody tr:last-child td { border-bottom: 0; }
 
 /* When the rail is collapsed there must still be a way back. A control that
    only exists in the collapsed state is a trap otherwise. */
+/* Reopens the collapsed rail. It used to sit at `margin-left: -15px`, which put
+   21 of its 29 pixels outside the canvas entirely - it read as a control that
+   had fallen off the edge. It now sits inside the canvas, and the toolbar makes
+   room for it rather than being overlapped. */
 .rail-peek {
   position: absolute;
-  margin: 10px 0 0 -15px;
+  left: 12px; top: 12px;
+  width: 32px; height: 32px;
   z-index: 11;
+  border-radius: var(--r-sm);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink-2);
   animation: chip-in var(--t-ui) var(--ease-out) backwards;
 }
+/* Only when collapsed, because that is the only time the button exists. */
+.workspace.collapsed .canvas-tools { padding-left: 56px; }
 .canvas { position: relative; }
 
 .empty-state-ico {

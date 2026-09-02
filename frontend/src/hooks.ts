@@ -151,13 +151,16 @@ export function useHistory() {
 export type WakePhase = 'checking' | 'waking' | 'ready' | 'failed'
 
 /** What the countdown promises.
-    45s was too optimistic: a wake after 35 minutes idle overran it. A curl
-    against a container that had been down only a few minutes took 25s, so the
-    length of the sleep matters - Render appears to evict rather than suspend
-    once an instance has been down a while, and a cold start from eviction is
-    far slower. The estimate is therefore padded against the eviction case, not
-    the lucky one. */
-export const WAKE_ESTIMATE_MS = 75_000
+    Measured against the real deployment: a wake after 20 minutes asleep served
+    its first response ~45s after the request. Render's own log only accounts
+    for 20s of that (14s of uvicorn import, 6s to first response) - the rest is
+    container scheduling, which happens before the log begins, so reading the
+    log alone underestimates the wait by more than half.
+
+    60s leaves ~15s of slack over the measured 45s. Pessimistic enough that the
+    ring normally empties early, without opening on a number that reads as a
+    threat. */
+export const WAKE_ESTIMATE_MS = 60_000
 
 export function useServerWake() {
   const [health, setHealth] = useState<Health | null>(null)
