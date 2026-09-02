@@ -154,10 +154,38 @@ will quietly absorb whatever else happens to be in the window.
 
 ---
 
-## 3. Bring-your-own API keys (multi-provider, user-supplied)
+## 3. Bring-your-own API keys — SHIPPED
 
 Goal: a user pastes their own key for whichever provider they have, and it
 works — rather than the keys living only in `backend/.env`.
+
+**Shipped for OpenRouter.** The key lives in the browser's `localStorage` and
+travels as an `X-LLM-Key` header on `/api/extract`, alongside `X-LLM-Model`.
+Headers rather than query parameters, because a query string is written to
+access logs and browser history verbatim and this is a credential.
+
+Three decisions worth keeping:
+
+- **No fallback.** With a user key present the router returns exactly one
+  provider and no chain. Silently falling back to the server's keys would
+  spend our quota on their request and record the model and cost of a call
+  they did not choose. A wrong key gets a 401 they can see.
+- **The key is threaded explicitly** (`ByoKey` through `extract` → `_one_pass`
+  → `complete_json` → `_providers`) rather than parked in a module global or a
+  context variable, so every function that can see the secret says so in its
+  signature.
+- **Redaction covers it** on the same path as the server's own keys. Verified:
+  a canary key sent through the UI appears in neither the error response nor
+  the server log.
+
+What it deliberately does not claim: the key passes *through* the server to
+reach OpenRouter. A browser cannot call OpenRouter directly without exposing
+the key to every site via CORS, so a proxy is the only safe shape — and the UI
+says so rather than implying the server never sees it.
+
+Still open: Groq and Google keys (only OpenRouter is wired), and the model
+price table in `frontend/src/byok.ts` is display-only guidance — recorded cost
+is always the figure OpenRouter reports for the request itself.
 
 ### Work items
 - [ ] Settings panel in the UI: one row per provider (OpenRouter, Groq,

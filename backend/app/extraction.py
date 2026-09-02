@@ -6,7 +6,7 @@ from typing import Any, Optional
 from pydantic import ValidationError
 
 from . import config, confidence
-from .llm_router import AllProvidersFailed, LLMCall, complete_json
+from .llm_router import AllProvidersFailed, ByoKey, LLMCall, complete_json
 from .parsing import ParsedDocument
 from .schemas import (CallTiming, Cost, ExtractionResult, InvoiceFields, LineItem,
                       LLMInvoiceResponse, RawLineItem, Timing)
@@ -138,16 +138,20 @@ def _normalize_line_items(items: list[RawLineItem]) -> list[LineItem]:
     return out
 
 
-async def _one_pass(doc: ParsedDocument) -> tuple[InvoiceFields, dict[str, float], LLMCall]:
+async def _one_pass(doc: ParsedDocument,
+                    byo: ByoKey | None = None,
+                    ) -> tuple[InvoiceFields, dict[str, float], LLMCall]:
     text = (doc.text or "")[:MAX_TEXT_CHARS]
     if doc.images_b64:
         user = IMAGE_USER_TEMPLATE.format(
             text=f"Any machine-readable text found:\n{text}" if text.strip() else "")
         call = await complete_json(
-            SYSTEM_PROMPT, user, config.EXTRACTION_TEMPERATURE, images=doc.images_b64)
+            SYSTEM_PROMPT, user, config.EXTRACTION_TEMPERATURE,
+            images=doc.images_b64, byo=byo)
     else:
         call = await complete_json(
-            SYSTEM_PROMPT, USER_TEMPLATE.format(text=text), config.EXTRACTION_TEMPERATURE)
+            SYSTEM_PROMPT, USER_TEMPLATE.format(text=text),
+            config.EXTRACTION_TEMPERATURE, byo=byo)
     fields, self_conf = _coerce(call.data)
     return fields, self_conf, call
 
@@ -173,7 +177,8 @@ def _sum_cost(calls: list[CallTiming]) -> Cost:
 
 
 async def extract(doc: ParsedDocument, filename: str,
-                  parse_ms: float = 0.0) -> ExtractionResult:
+                  parse_ms: float = 0.0,
+                  byo: ByoKey | None = None) -> ExtractionResult:
     """Run N passes concurrently, then score. Two passes is the sweet spot: it
     doubles cost but gives us the agreement signal, which is worth far more than
     the model's own opinion of itself.
@@ -195,7 +200,7 @@ async def extract(doc: ParsedDocument, filename: str,
 
     n = max(1, config.EXTRACTION_PASSES)
     llm_started = time.perf_counter()
-    outcomes = await asyncio.gather(*[_one_pass(doc) for _ in range(n)],
+    outcomes = await asyncio.gather(*[_one_pass(doc, byo) for _ in range(n)],
                                     return_exceptions=True)
     llm_ms = (time.perf_counter() - llm_started) * 1000
 

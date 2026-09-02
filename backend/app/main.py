@@ -1,13 +1,14 @@
 """FastAPI surface for the invoice extractor."""
 from __future__ import annotations
+import re
 import time
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config, db, llm_router, parsing
 from .extraction import extract
-from .llm_router import AllProvidersFailed
+from .llm_router import AllProvidersFailed, ByoKey
 from .schemas import Correction, ExtractionResult
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -46,13 +47,51 @@ def health():
     }
 
 
+# A model id is `vendor/name` with an optional `:suffix` - the shape OpenRouter
+# uses. Validating the shape rather than an allowlist is deliberate: the picker
+# in the UI is a convenience, not a cage, and models get retired often enough
+# that a hardcoded list would break working setups. A wrong id fails at
+# OpenRouter with a clear 404, which is a better error than "not on our list".
+_MODEL_ID = re.compile(r"^[A-Za-z0-9._-]{1,60}/[A-Za-z0-9._-]{1,80}(:[A-Za-z0-9._-]{1,20})?$")
+
+
+def _byo_from_headers(key: str | None, model: str | None) -> ByoKey | None:
+    """Build the per-request override, or None to use the server's own chain.
+
+    Both header values are supplied by the browser and neither is trusted: the
+    key is length-checked and rejected if it carries whitespace or control
+    characters (which would let it split a header downstream), and the model is
+    shape-checked before it reaches a URL or a request body. Nothing here is
+    logged - the whole point is that this value passes through without leaving
+    a trace on the server.
+    """
+    if not key:
+        return None
+    key = key.strip()
+    if not key or len(key) > 200 or any(c.isspace() or ord(c) < 32 for c in key):
+        raise HTTPException(400, "That API key does not look like a key.")
+    model = (model or "").strip()
+    if not _MODEL_ID.match(model):
+        raise HTTPException(400, "Pick a model to use with your key.")
+    return ByoKey(api_key=key, model=model)
+
+
 @app.post("/api/extract", response_model=ExtractionResult)
-async def extract_endpoint(file: UploadFile = File(...)):
+async def extract_endpoint(
+    file: UploadFile = File(...),
+    # Headers, not query parameters or form fields: a query string is written
+    # to access logs and browser history verbatim, and this is a credential.
+    x_llm_key: str | None = Header(default=None, alias="X-LLM-Key"),
+    x_llm_model: str | None = Header(default=None, alias="X-LLM-Model"),
+):
+    byo = _byo_from_headers(x_llm_key, x_llm_model)
     data = await file.read()
 
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"File is larger than {MAX_UPLOAD_BYTES // 1024 // 1024} MB.")
-    if not llm_router.available_providers():
+    # With a caller-supplied key the server's own providers are irrelevant, so
+    # having none configured is not a reason to refuse the request.
+    if not byo and not llm_router.available_providers():
         raise HTTPException(
             503, "No LLM provider configured. Add OPENROUTER_API_KEY to backend/.env.")
 
@@ -61,7 +100,8 @@ async def extract_endpoint(file: UploadFile = File(...)):
     parse_ms = (time.perf_counter() - parse_started) * 1000
 
     try:
-        result = await extract(doc, file.filename or "upload", parse_ms=parse_ms)
+        result = await extract(doc, file.filename or "upload",
+                               parse_ms=parse_ms, byo=byo)
     except AllProvidersFailed as e:
         raise HTTPException(502, f"Every LLM provider failed: {e}") from e
 

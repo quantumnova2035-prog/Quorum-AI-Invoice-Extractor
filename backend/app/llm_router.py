@@ -50,7 +50,23 @@ class LLMCall:
 _SECRET_IN_URL = re.compile(r"([?&](?:key|api_key|access_token)=)[^&\s'\"]+", re.I)
 
 
-def _redact(text: str) -> str:
+@dataclass(frozen=True)
+class ByoKey:
+    """A key the caller supplied for this one request.
+
+    It lives for the lifetime of a single HTTP request and nothing else: never
+    written to disk, never stored with the document, never logged, and redacted
+    out of error text exactly like the server's own keys. It is threaded
+    explicitly down the call chain rather than parked in a module global or a
+    context variable, so every function that can see it says so in its
+    signature - the property you want when the value is a credential belonging
+    to somebody else.
+    """
+    api_key: str
+    model: str
+
+
+def _redact(text: str, byo: Optional["ByoKey"] = None) -> str:
     """Strip credentials out of anything that might be logged or surfaced.
 
     Gemini takes its key as a URL query parameter, so an httpx error message
@@ -58,7 +74,13 @@ def _redact(text: str) -> str:
     responses, and in terminal scrollback - so it must never carry the secret.
     """
     text = _SECRET_IN_URL.sub(r"\1***REDACTED***", text)
-    for secret in (config.OPENROUTER_API_KEY, config.GROQ_API_KEY, config.GOOGLE_API_KEY):
+    # A caller-supplied key travels the same path. It is somebody else's
+    # credential passing through our process, which makes leaking it into a log
+    # worse than leaking our own, not better.
+    secrets = [config.OPENROUTER_API_KEY, config.GROQ_API_KEY, config.GOOGLE_API_KEY]
+    if byo:
+        secrets.append(byo.api_key)
+    for secret in secrets:
         if secret and len(secret) > 8:
             text = text.replace(secret, "***REDACTED***")
     return text
@@ -83,7 +105,21 @@ class Provider:
         return self.model not in config.TEXT_ONLY_MODELS
 
 
-def _providers() -> list[Provider]:
+def _providers(byo: Optional[ByoKey] = None) -> list[Provider]:
+    """The chain to try, in order.
+
+    With a caller-supplied key this returns exactly one provider and no
+    fallback. That is deliberate: silently falling back to the server's own
+    keys would spend our quota on their request and, worse, would record the
+    model and cost of a call the user did not choose. A wrong key or a retired
+    model needs to be reported, not quietly rescued.
+    """
+    if byo:
+        short = byo.model.split("/", 1)[-1].removesuffix(":free")
+        return [Provider(f"openrouter:{short}",
+                         "https://openrouter.ai/api/v1/chat/completions",
+                         byo.model, byo.api_key)]
+
     providers = []
     for model in config.OPENROUTER_MODELS:
         # Each free ":free" model on OpenRouter is usually served by a different
@@ -196,7 +232,8 @@ def _read_usage(p: Provider, data: dict) -> tuple[Optional[int], Optional[int],
 
 async def complete_json(system: str, user: str, temperature: float = 0.3,
                         images: Optional[list[str]] = None,
-                        attempts_per_provider: int = 2) -> LLMCall:
+                        attempts_per_provider: int = 2,
+                        byo: Optional[ByoKey] = None) -> LLMCall:
     """Return an LLMCall (parsed JSON + timing). Raises AllProvidersFailed."""
     errors: list[str] = []
     attempts = 0
@@ -204,11 +241,15 @@ async def complete_json(system: str, user: str, temperature: float = 0.3,
     # the successful call" instead would fold in client setup and quietly report
     # it as retry waste on a request that never actually retried.
     wasted_ms = 0.0
-    candidates = [p for p in _providers() if p.available]
+    candidates = [p for p in _providers(byo) if p.available]
     if images:
         vision = [p for p in candidates if p.supports_vision]
         if not vision:
             raise AllProvidersFailed(
+                f"This document is a scan or photo and needs a vision-capable model, "
+                f"but {byo.model} is text-only. Pick a vision-capable model, or turn "
+                f"your own key off to use the server's chain."
+                if byo else
                 "This document is a scan or photo and needs a vision-capable model, "
                 "but every configured provider is text-only. Set GOOGLE_API_KEY, or "
                 "add a vision-capable model to OPENROUTER_MODELS.")
@@ -243,7 +284,7 @@ async def complete_json(system: str, user: str, temperature: float = 0.3,
                         cost_is_estimated=estimated,
                     )
                 except Exception as e:  # noqa: BLE001 - we want to try the next provider
-                    errors.append(f"{p.name}: {type(e).__name__}: {_redact(str(e))}")
+                    errors.append(f"{p.name}: {type(e).__name__}: {_redact(str(e), byo)}")
                     await asyncio.sleep(0.5)
                     wasted_ms += (time.perf_counter() - call_started) * 1000
     raise AllProvidersFailed("; ".join(errors) or "no provider configured — set a key in .env")

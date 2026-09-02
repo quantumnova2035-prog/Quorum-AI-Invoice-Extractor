@@ -1,10 +1,14 @@
 import type { Health } from '../types'
+import type { ByoSettings } from '../byok'
+import { ByoPanel } from './ByoKeys'
 
-/* The three items here are on the roadmap, not shipped (FUTURE-UPDATES.md §3,
-   §4, §5). They are rendered as disabled previews rather than working-looking
-   controls: a key field that silently does nothing is worse than no field, and
-   on a project whose whole point is honest reporting it would be the wrong kind
-   of lie to tell in its own settings screen. */
+/* What remains here is on the roadmap, not shipped (FUTURE-UPDATES.md §4, §5),
+   and is rendered as disabled previews rather than working-looking controls: a
+   field that silently does nothing is worse than no field, and on a project
+   whose whole point is honest reporting it would be the wrong kind of lie to
+   tell in its own settings screen.
+
+   §3 used to sit here as a preview. It is real now, above. */
 
 type Row = {
   section: string
@@ -15,17 +19,6 @@ type Row = {
 }
 
 const ROADMAP: Row[] = [
-  {
-    section: '§3',
-    title: 'Bring your own API keys',
-    blurb: 'Paste a key for OpenRouter, Groq, Google or any other provider and use '
-         + 'your own quota instead of the one baked into the server.',
-    status: 'planned',
-    note: 'Blocked on one real decision: where a user-supplied key is allowed to live. '
-        + 'Browser storage means it survives a refresh but is readable by any script on '
-        + 'the page; server-side means it has to be encrypted at rest and scoped to a '
-        + 'session. That is a security call, not a UI one.',
-  },
   {
     section: '§4',
     title: 'Local model, no key at all',
@@ -50,10 +43,17 @@ const ROADMAP: Row[] = [
   },
 ]
 
-export default function Settings({ health }: { health: Health | null }) {
+export default function Settings({ health, byo, onByo }: {
+  health: Health | null
+  byo: ByoSettings
+  onByo: (v: ByoSettings) => void
+}) {
   return (
     <>
-      <div className="section-title">Active configuration</div>
+      <div className="section-title">Provider</div>
+      <ByoPanel value={byo} onChange={onByo} />
+
+      <div className="section-title" style={{ marginTop: 22 }}>Active configuration</div>
 
       {health ? (
         <div className="summary">
@@ -137,8 +137,9 @@ export default function Settings({ health }: { health: Health | null }) {
       </div>
 
       <p className="muted" style={{ fontSize: 12.5, marginTop: 16, lineHeight: 1.55 }}>
-        Nothing on this screen is a working control yet. It is here so the shape of the
-        settings surface exists before the features land, not to imply they already work.
+        The provider panel above is live. Everything in this roadmap section is not:
+        it is here so the shape of the settings surface exists before the features
+        land, not to imply they already work.
       </p>
     </>
   )

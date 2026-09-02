@@ -11,6 +11,8 @@ import Settings from './components/Settings'
 import UploadView from './components/UploadView'
 import { FieldTools, NoFieldsMatch, filterFields, type FieldFilter } from './components/FieldTools'
 import { IconDoc } from './components/Icons'
+import { ByoDialog } from './components/ByoKeys'
+import { byoActive, byoHeaders, loadByo, saveByo, type ByoSettings } from './byok'
 import { Waking } from './components/Waking'
 
 /* Two layouts over one state model.
@@ -53,6 +55,19 @@ export default function App() {
      came from, with a back button. */
   const [docOpen, setDocOpen] = useState(false)
 
+  /* Bring-your-own-key. Read once from localStorage on mount rather than on
+     every render, and written back on every change so a reload keeps it. */
+  const [byo, setByoState] = useState<ByoSettings>(loadByo)
+  const [byoOpen, setByoOpen] = useState(false)
+  const setByo = useCallback((v: ByoSettings) => { setByoState(v); saveByo(v) }, [])
+  const byoOn = byoActive(byo)
+
+  /* The upload worker is a long-lived effect; reading the setting through a
+     ref keeps it current without making every keystroke in the key field
+     restart the queue. */
+  const byoRef = useRef(byo)
+  byoRef.current = byo
+
   const enqueue = useCallback((files: FileList | File[]) => {
     const items: BatchItem[] = Array.from(files).map(file => ({ id: uid(), file, status: 'queued' }))
     if (!items.length) return
@@ -79,7 +94,11 @@ export default function App() {
         try {
           const body = new FormData()
           body.append('file', item.file)
-          const res = await fetch(api('/api/extract'), { method: 'POST', body })
+          /* Read at send time, not captured when the upload was queued - a
+             key pasted while a batch is in flight should apply to the files
+             that have not gone yet. */
+          const res = await fetch(api('/api/extract'),
+                                  { method: 'POST', body, headers: byoHeaders(byoRef.current) })
           if (!res.ok) {
             const detail = await res.json().catch(() => null)
             throw new Error(detail?.detail ?? `HTTP ${res.status}`)
@@ -257,16 +276,26 @@ export default function App() {
             <i className={`dot ${health.supabase.enabled ? 'ok' : 'off'}`} />
             <span className="t">{health.supabase.enabled ? 'Supabase' : 'No database'}</span>
           </span>
-          <span className="pill mono" title={health.llm_providers.join(' → ')}>
-            <i className={`dot ${health.llm_providers.length ? 'ok' : 'off'}`} />
+          {/* The provider chip is the way into key settings on desktop: it is
+              already the thing that names which model answers, so it is where
+              someone looks to change it. */}
+          <button
+            className={`pill mono providerbtn${byoOn ? ' byo' : ''}`}
+            onClick={() => setByoOpen(true)}
+            title={byoOn ? `Your key · ${byo.model}` : health.llm_providers.join(' → ')}
+          >
+            <i className={`dot ${byoOn || health.llm_providers.length ? 'ok' : 'off'}`} />
             {/* A bare text node inside a flex container becomes an anonymous
                 flex item, which cannot be given overflow/text-overflow - so the
                 label needs a real element to truncate against. */}
-            <span className="t">{health.llm_providers[0] ?? 'no LLM key'}</span>
-            {health.llm_providers.length > 1 && (
-              <span className="more">+{health.llm_providers.length - 1}</span>
-            )}
-          </span>
+            <span className="t">
+              {byoOn ? byo.model.split('/').pop() : (health.llm_providers[0] ?? 'no LLM key')}
+            </span>
+            {byoOn
+              ? <span className="more">your key</span>
+              : health.llm_providers.length > 1 &&
+                  <span className="more">+{health.llm_providers.length - 1}</span>}
+          </button>
         </div>
       )}
     </header>
@@ -276,7 +305,7 @@ export default function App() {
     <Waking elapsed={wakeMs} failed={wakeFailed} onRetry={retryWake} />
   )
 
-  const noProvider = health && !health.llm_providers.length && (
+  const noProvider = health && !health.llm_providers.length && !byoOn && (
     <div className="warn" style={{ margin: '12px 18px 0' }}>
       No LLM provider is configured. Add <code>OPENROUTER_API_KEY</code> to{' '}
       <code>backend/.env</code> and restart the backend.
@@ -329,7 +358,8 @@ export default function App() {
                             onFieldQ={setFieldQ} onFieldFilter={setFieldFilter} />
               )}
 
-              {!docOpen && view === 'settings' && <Settings health={health} />}
+              {!docOpen && view === 'settings' &&
+              <Settings health={health} byo={byo} onByo={setByo} />}
 
               {docError && <div className="err" style={{ marginTop: 12 }}>{docError}</div>}
             </div>
@@ -347,6 +377,9 @@ export default function App() {
       {header}
       {wakeBanner}
       {noProvider}
+
+      <ByoDialog open={byoOpen} onClose={() => setByoOpen(false)}
+                 value={byo} onChange={setByo} />
 
       <DocStack docs={stack} activeId={activeId} onOpen={openDoc} onFiles={enqueue} />
 

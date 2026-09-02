@@ -30,6 +30,10 @@
   /* --- Ground. Glass needs structure behind it or the blur has nothing to
          reveal and the effect collapses into flat gray. --- */
   --bg:         #eaeff7;
+  /* An opaque surface for anything floating above its own backdrop. The
+     backdrop already carries the blur, and stacking a second translucent
+     layer on top of it turns both to mud. */
+  --surface:    #fafcff;
   --bg-2:       #dfe7f3;
 
   /* --- Materials --- */
@@ -1214,4 +1218,142 @@ tbody tr:last-child td { border-bottom: 0; }
   .wr-fill { transition: none; }
   .wakering.is-over .wr-fill { animation: none; }
   .wakecard-note { animation: none; }
+}
+
+/* --------------------------------------------------- bring your own key --- */
+
+.providerbtn { cursor: pointer; }
+.providerbtn .more { color: var(--muted); }
+.providerbtn.byo { background: var(--brand-tint); border-color: rgba(37,99,235,.28); }
+.providerbtn.byo .more { color: var(--brand-600); }
+.providerbtn { transition: background-color var(--t-fast) ease, transform var(--t-press) var(--ease-out); }
+.providerbtn:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) {
+  .providerbtn:hover { background: var(--glass-strong); }
+  .providerbtn.byo:hover { background: rgba(37,99,235,.16); }
+}
+
+.byo-toggle {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--glass-dim);
+  border: 1px solid var(--glass-edge);
+}
+.byo-toggle-t { font: 600 13.5px var(--sans); color: var(--ink); }
+.byo-toggle-s { margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+.switch {
+  flex: none; margin-left: auto;
+  width: 44px; height: 26px; padding: 3px;
+  border-radius: 999px; cursor: pointer;
+  background: var(--faint); border: 0;
+  transition: background-color var(--t-ui) var(--ease-out);
+}
+.switch i {
+  display: block; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: var(--shadow-sm);
+  /* Translate, never margin or left: only transform stays on the compositor,
+     and this is a control someone can flick repeatedly. */
+  transform: translateX(0);
+  transition: transform var(--t-ui) var(--ease-out);
+}
+.switch.on { background: var(--brand); }
+.switch.on i { transform: translateX(18px); }
+
+.byo-body { margin-top: 16px; animation: why-in var(--t-ui) var(--ease-out); }
+.byo-label {
+  display: block; margin-bottom: 7px;
+  font: 600 11px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted);
+}
+.byo-keyrow { display: flex; gap: 8px; }
+.byo-input {
+  flex: 1; min-width: 0;
+  padding: 10px 13px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-strong);
+  color: var(--ink); font-size: 13px;
+  transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+.byo-input:focus {
+  outline: none; border-color: var(--brand-300);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+.byo-hint { margin: 7px 0 0; font-size: 11.5px; color: var(--faint); }
+
+.byo-models { display: flex; flex-direction: column; gap: 6px; }
+.byo-model {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 10px 13px; cursor: pointer;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-dim);
+  transition: background-color var(--t-fast) ease, border-color var(--t-fast) ease,
+              transform var(--t-press) var(--ease-out);
+}
+.byo-model:active { transform: scale(.995); }
+.byo-model.on { border-color: var(--brand-300); background: var(--brand-tint); }
+@media (hover: hover) and (pointer: fine) {
+  .byo-model:hover { background: var(--glass-strong); }
+  .byo-model.on:hover { background: rgba(37,99,235,.16); }
+}
+.byo-model-main { min-width: 0; flex: 1; display: block; }
+.byo-model-name { display: block; font: 600 13px var(--sans); color: var(--ink); }
+.byo-model-id {
+  display: block; margin-top: 2px; font-size: 11px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.byo-model-meta { flex: none; text-align: right; }
+.byo-price { display: block; font: 600 12px var(--mono); color: var(--ink-2); }
+.byo-price.free { color: var(--green); }
+.byo-ctx { display: block; margin-top: 2px; font-size: 11px; color: var(--faint); }
+
+.byo-note { margin: 10px 0 0; font-size: 12px; line-height: 1.55; color: var(--muted); }
+.byo-note-key {
+  margin-top: 12px; padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--amber-tint); color: var(--amber);
+}
+
+/* ---- desktop dialog ---- */
+.byo-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(9, 24, 52, .28);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: byo-fade var(--t-fast) var(--ease-out);
+}
+.byo-dialog {
+  width: min(560px, 100%); max-height: min(760px, 88vh);
+  display: flex; flex-direction: column;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-edge);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  /* From .97, not from nothing - a panel that grows out of a point reads as a
+     special effect rather than a surface arriving. */
+  animation: byo-in var(--t-panel) var(--ease-drawer) both;
+}
+.byo-dialog-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 15px 16px 13px 20px;
+  border-bottom: 1px solid var(--hair-soft);
+}
+.byo-dialog-head h2 { margin: 0; font: 600 15px var(--sans); color: var(--ink); }
+.byo-dialog-head .iconbtn { margin-left: auto; }
+.byo-dialog-body { padding: 18px 20px 22px; overflow-y: auto; }
+
+@keyframes byo-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes byo-in {
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .byo-backdrop, .byo-dialog, .byo-body { animation: none; }
+  .switch i { transition: none; }
 }
