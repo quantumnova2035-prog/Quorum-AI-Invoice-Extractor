@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { DocSummary } from '../types'
 import { HISTORY_LIMIT } from '../hooks'
+import { api } from '../api'
 import { ms, usd } from '../ReviewUI'
 import { IconClose, IconDoc, IconSearch } from './Icons'
 import { Segmented } from './Toolbar'
@@ -87,6 +88,11 @@ export default function Home({ docs, activeId, onOpen, onDelete, deletingId }: {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<Sort>('recent')
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  // Off by default: exporting everything (including fields still waiting on a
+  // human) is the honest default, since silently dropping rows out of an
+  // export is more surprising than including a review_status column that
+  // flags them.
+  const [cleanOnly, setCleanOnly] = useState(false)
 
   /* File name only, and the control says so on its face.
 
@@ -134,6 +140,21 @@ export default function Home({ docs, activeId, onOpen, onDelete, deletingId }: {
         </div>
         <Segmented value={sort} options={SORTS} onChange={setSort} label="Sort documents" />
       </div>
+
+      {docs.length > 0 && (
+        <div className="listtools" style={{ marginTop: -4 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input type="checkbox" checked={cleanOnly}
+                   onChange={e => setCleanOnly(e.target.checked)} />
+            Only fully auto-approved
+          </label>
+          <a className="btn ghost"
+             href={api(`/api/export/csv?limit=${HISTORY_LIMIT}&only_clean=${cleanOnly}`)}
+             title="One row per line item, ready for a QuickBooks / Zoho / Tally 'Import Bills' screen">
+            Export CSV
+          </a>
+        </div>
+      )}
 
       {q.trim() && shown.length > 0 && (
         <p className="listcount">{shown.length} of {docs.length} documents</p>

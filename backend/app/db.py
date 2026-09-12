@@ -117,6 +117,23 @@ def list_documents(limit: int = 50) -> list[dict[str, Any]]:
         return []
 
 
+def list_documents_for_export(limit: int = 200) -> list[dict[str, Any]]:
+    """Like list_documents, but pulls the columns CSV export actually needs
+    (fields + line_items), which the History-list query deliberately omits to
+    keep that request light."""
+    c = client()
+    if c is None:
+        return []
+    try:
+        res = (c.table("documents")
+               .select("id, filename, fields, line_items, overall_confidence, "
+                       "auto_accept_rate, created_at")
+               .order("created_at", desc=True).limit(limit).execute())
+        return res.data or []
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def delete_document(doc_id: str) -> bool:
     """Corrections cascade-delete with their document (see supabase_schema.sql's
     ON DELETE CASCADE), so removing a document also cleans up its corrections."""

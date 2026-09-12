@@ -5,8 +5,9 @@ import time
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
-from . import config, db, llm_router, parsing
+from . import config, db, export, llm_router, parsing
 from .extraction import extract
 from .llm_router import AllProvidersFailed, ByoKey
 from .schemas import Correction, ExtractionResult
@@ -134,6 +135,37 @@ def delete_document(doc_id: str):
     if not db.delete_document(doc_id):
         raise HTTPException(500, "Delete failed.")
     return {"deleted": True}
+
+
+def _csv_response(csv_text: str, filename: str) -> StreamingResponse:
+    return StreamingResponse(
+        iter([csv_text]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/export/csv")
+def export_csv(limit: int = 200, only_clean: bool = False):
+    """One row per line item, invoice fields repeated — the shape a QuickBooks/
+    Zoho Books/Tally "Import Bills" screen expects. only_clean=true drops any
+    document that still has a field waiting on human review, so what comes out
+    is only data that's actually been signed off."""
+    if not db.enabled():
+        raise HTTPException(503, "Supabase is not configured - nothing to export.")
+    docs = db.list_documents_for_export(limit)
+    csv_text = export.build_csv(docs, only_clean=only_clean)
+    return _csv_response(csv_text, "invoices_export.csv")
+
+
+@app.get("/api/documents/{doc_id}/export.csv")
+def export_document_csv(doc_id: str):
+    row = db.get_document(doc_id)
+    if row is None:
+        raise HTTPException(404, "Document not found (or Supabase is not configured).")
+    csv_text = export.build_csv([row])
+    safe_name = (row.get("filename") or doc_id).rsplit(".", 1)[0]
+    return _csv_response(csv_text, f"{safe_name}.csv")
 
 
 @app.post("/api/corrections")

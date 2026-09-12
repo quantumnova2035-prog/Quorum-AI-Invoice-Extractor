@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Cost, ExtractionResult, FieldResult, Timing } from './types'
 import { FIELD_LABELS } from './types'
+import { api } from './api'
 
 /* Shared between the live batch queue and the history browser — a processed
    invoice looks the same whether it just finished or was pulled back out of
@@ -189,6 +190,14 @@ export function Detail({ result, corrected, onSave, readOnly, fields }: {
 
       {result.timing && result.timing.calls.length > 0 &&
         <TimingPanel t={result.timing} c={result.cost} />}
+
+      {result.document_id && (
+        <a className="btn ghost" style={{ marginBottom: 16, display: 'inline-flex' }}
+           href={api(`/api/documents/${result.document_id}/export.csv`)}
+           title="One row per line item, ready for a QuickBooks / Zoho / Tally 'Import Bills' screen">
+          Export CSV
+        </a>
+      )}
 
       {needsReview.length > 0 && (
         <>
