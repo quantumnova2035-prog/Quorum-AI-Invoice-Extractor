@@ -192,11 +192,18 @@ export function Detail({ result, corrected, onSave, readOnly, fields }: {
         <TimingPanel t={result.timing} c={result.cost} />}
 
       {result.document_id && (
-        <a className="btn ghost" style={{ marginBottom: 16, display: 'inline-flex' }}
-           href={api(`/api/documents/${result.document_id}/export.csv`)}
-           title="One row per line item, ready for a QuickBooks / Zoho / Tally 'Import Bills' screen">
-          Export CSV
-        </a>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <a className="btn ghost" style={{ display: 'inline-flex' }}
+             href={api(`/api/documents/${result.document_id}/export.csv`)}
+             title="One row per line item, ready for a QuickBooks / Zoho / Tally 'Import Bills' screen">
+            Export CSV
+          </a>
+          <a className="btn ghost" style={{ display: 'inline-flex' }}
+             href={api(`/api/documents/${result.document_id}/export.tally.xml`)}
+             title="Tally's native voucher-import XML — Gateway of Tally > Import Data. Ledger names must already exist in your Tally company.">
+            Export Tally XML
+          </a>
+        </div>
       )}
 
       {needsReview.length > 0 && (

@@ -153,6 +153,11 @@ export default function Home({ docs, activeId, onOpen, onDelete, deletingId }: {
              title="One row per line item, ready for a QuickBooks / Zoho / Tally 'Import Bills' screen">
             Export CSV
           </a>
+          <a className="btn ghost"
+             href={api(`/api/export/tally?limit=${HISTORY_LIMIT}&only_clean=${cleanOnly}`)}
+             title="Tally's native voucher-import XML — Gateway of Tally > Import Data. Ledger names must already exist in your Tally company.">
+            Export Tally XML
+          </a>
         </div>
       )}
 

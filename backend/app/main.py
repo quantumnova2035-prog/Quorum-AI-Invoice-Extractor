@@ -2,12 +2,13 @@
 from __future__ import annotations
 import re
 import time
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from . import config, db, export, llm_router, parsing
+from . import config, db, export, llm_router, parsing, tally_export
 from .extraction import extract
 from .llm_router import AllProvidersFailed, ByoKey
 from .schemas import Correction, ExtractionResult
@@ -166,6 +167,63 @@ def export_document_csv(doc_id: str):
     csv_text = export.build_csv([row])
     safe_name = (row.get("filename") or doc_id).rsplit(".", 1)[0]
     return _csv_response(csv_text, f"{safe_name}.csv")
+
+
+def _xml_response(xml_text: str, filename: str, skipped: list[str]) -> StreamingResponse:
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if skipped:
+        # Not every consumer will read this, but curl/debugging benefits from
+        # it, and it costs nothing to include. Kept short and URL-encoded since
+        # header values must be ASCII / free of newlines.
+        preview = "; ".join(skipped[:10]) + (f" (+{len(skipped) - 10} more)" if len(skipped) > 10 else "")
+        headers["X-Skipped-Count"] = str(len(skipped))
+        headers["X-Skipped-Preview"] = quote(preview)
+    return StreamingResponse(iter([xml_text]), media_type="application/xml", headers=headers)
+
+
+@app.get("/api/export/tally")
+def export_tally(
+    limit: int = 200,
+    only_clean: bool = False,
+    company: str = "",
+    purchase_ledger: str = "Purchase Account",
+    tax_ledger: str = "Input GST",
+):
+    """One Purchase voucher per invoice, Tally's native import XML.
+
+    Ledger names must already exist in the target Tally company - see
+    tally_export.py's module docstring. Any invoice missing a vendor, total,
+    or a parseable date is skipped rather than guessed; see the
+    X-Skipped-Count / X-Skipped-Preview response headers.
+    """
+    if not db.enabled():
+        raise HTTPException(503, "Supabase is not configured - nothing to export.")
+    docs = db.list_documents_for_export(limit)
+    xml_text, skipped = tally_export.build_tally_xml(
+        docs, company_name=company, purchase_ledger=purchase_ledger,
+        tax_ledger=tax_ledger, only_clean=only_clean,
+    )
+    return _xml_response(xml_text, "invoices_tally.xml", skipped)
+
+
+@app.get("/api/documents/{doc_id}/export.tally.xml")
+def export_document_tally(
+    doc_id: str,
+    company: str = "",
+    purchase_ledger: str = "Purchase Account",
+    tax_ledger: str = "Input GST",
+):
+    row = db.get_document(doc_id)
+    if row is None:
+        raise HTTPException(404, "Document not found (or Supabase is not configured).")
+    xml_text, skipped = tally_export.build_tally_xml(
+        [row], company_name=company, purchase_ledger=purchase_ledger, tax_ledger=tax_ledger,
+    )
+    if not xml_text.strip() or "<VOUCHER " not in xml_text:
+        reason = skipped[0] if skipped else "unknown reason"
+        raise HTTPException(422, f"Can't build a Tally voucher for this invoice: {reason}")
+    safe_name = (row.get("filename") or doc_id).rsplit(".", 1)[0]
+    return _xml_response(xml_text, f"{safe_name}.tally.xml", skipped)
 
 
 @app.post("/api/corrections")
